@@ -5,11 +5,8 @@ output:
     toc: false
 ---
 
-The goal of this new template is to simplify the setup and maintenance of a research website.
-Specifically,
+The goal of this repo is to use confounder adjustment methods in conjunction with voom. That is, perhaps we can obtain more accurate voom precision weights while also estimating the degree and form of hidden confounding.
 
-*  Easier to build and extend the website using the new tools in the [rmarkdown][] package and [latest RStudio release][rstudio]
-*  Easier to deploy the website with Git and GitHub by only using one branch
+Index of notebooks:
 
-[rmarkdown]: http://rmarkdown.rstudio.com/rmarkdown_websites.htm
-[rstudio]: https://www.rstudio.com/products/rstudio/download/preview/
+1. [Create a dataset of characteristics of GTEX data.](gtex_characteristics.html) This is for use in the `seqgendiff` R package for `theogen`
