@@ -1,0 +1,84 @@
+---
+title: "VOOM on SeqGenDiff"
+author: "David Gerard"
+date: "March 1, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Summary 
+
+The goal of this analysis is to explore how different the voom estimates are using the different permutations and group labelings of a large RNAseq dataset. The idea is that if there is a lot of variability, then VOOM is sensitive to mispecification of the mean model. I.e., if there are confounding factors effecting the mean model, then not accounting for these can effect the VOOM weights. I see a moderate amount of variability. I also see voom weights that are negatively correlated with each other as we vary the group permutations.
+
+# Analysis
+
+```{r}
+set.seed(81)
+nsamp <- 10
+ngene <- 10000
+library(tidyverse)
+dat <- read.csv("../data/muscle.csv")[, -c(1:2)]
+dat <- dat[apply(dat, 1, median) >= 10, ] ## remove low expressed genes
+which_samp <- sample(1:ncol(dat), size = nsamp)
+which_gene <- sample(1:nrow(dat), size = ngene)
+subdat <- dat[which_gene, which_samp]
+rm(dat)
+```
+
+Look at how variable the voom weights are based on group labeling. Only 10 choose 5  (252) possible ways to partition in half.
+
+```{r}
+library(limma)
+
+comblist <- combn(10, 5, simplify = FALSE)
+get_one <- function(x, n) {
+  y <- rep(1, n)
+  y[x] <-0
+  return(y)
+}
+
+poss_design <- lapply(comblist, FUN = get_one, n = nsamp)
+weight_array <- array(NA, dim = c(ngene, nsamp, length(poss_design)))
+for (index in 1:length(poss_design)) {
+  X <- model.matrix(~poss_design[[index]])
+  vout <- voom(counts = subdat, design = X)
+  weight_array[, , index] <- vout$weights  
+}
+```
+
+Explore variability in estimated weights.
+
+```{r}
+sd_weights <- apply(weight_array, c(1, 2), sd)
+mean_weights <- apply(weight_array, c(1, 2), mean)
+
+boxplot(c(mean_weights))
+boxplot(c(sd_weights))
+```
+
+The means of the weights are on the order of 2 to 3.5 and the sd of the weights is on the order of 0.1 to 0.2.
+
+```{r}
+for (index in 1:30) {
+  i <- sample(1:ngene, 1)
+  j <- sample(1:ngene, 1)
+  k <- sample(1:nsamp, 1)
+  l <- sample(1:nsamp, 1)
+  
+  
+  
+  plot(weight_array[i, k, ], weight_array[j, l, ])
+  abline(0, 1)
+  mtext(paste0("cor = ", round(cor(weight_array[i, k, ], weight_array[j, l, ]), digits = 2)))  
+}
+
+```
+
+Lots of variability in the weight estimates. They aren't too robust to changing the design.
+
+```{r}
+sessionInfo()
+```

@@ -1,0 +1,45 @@
+---
+title: "GTEx Characteristics"
+author: "David Gerard"
+date: "February 27, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Read in GTEx data
+
+```{r}
+library(tidyverse)
+dat <- read.csv("../data/muscle.csv")[, -(1:2)] ## don't need gene ids
+ldat <- log(dat + 1)
+```
+
+Number of zeros:
+
+```{r}
+nzero_gene <- rowSums(dat == 0)
+nzero_obs  <- colSums(dat == 0)
+```
+
+Average log counts + 1
+
+```{r}
+cave_gene <- rowMeans(ldat)
+cave_obs  <- colMeans(ldat)
+
+csd_gene  <-  apply(ldat, 1, sd)
+csd_obs   <-  apply(ldat, 2, sd)
+
+gene <- data_frame(nzero = nzero_gene, ave = cave_gene, sd = csd_gene)
+obs <- data_frame(nzero = nzero_obs, ave = cave_obs, sd = csd_obs)
+
+write.csv(gene, file = "../output/gene_features.csv", row.names = FALSE)
+write.csv(obs, file = "../output/obs_features.csv", row.names = FALSE)
+```
+
+```{r}
+sessionInfo()
+```
