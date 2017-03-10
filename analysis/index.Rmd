@@ -11,3 +11,4 @@ Index of notebooks:
 
 1. [Create a dataset of characteristics of GTEX data.](gtex_characteristics.html) This is for use in the `seqgendiff` R package for `theogen`
 2. [VOOM weights are moderately variable when changing design matrix](voom_seqgendiff.html). Does this indicate that accounting for unobserved confounding would improve the voom weight estimates? One of the benefits of VOOM is its speed. Would we compromize this too much in trying to account for unobserved confounding? It could be good to first try out voom normalization using control genes.
+3. [See if iterating voom steps changes the results.](iterate_voom.Rmd) On first glance, it seems to not change much.

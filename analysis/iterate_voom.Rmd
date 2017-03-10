@@ -1,0 +1,177 @@
+---
+title: "Iterate Voom"
+author: "David Gerard"
+date: "March 10, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Abstract
+
+Here, I try iterating VOOM-LIMMA a couple times. I see how the weights change.
+
+# Read in Data
+
+```{r}
+library(seqgendiff)
+muscle <- as.matrix(read.csv("../data/muscle.csv")[-c(1:2)])
+dat <- poisthin(mat = t(muscle), prop_null = 1, ngene = 20000, nsamp = 40)
+rm(muscle)
+Y <- t(dat$Y)
+X <- dat$X
+```
+
+Note that VOOM doesn't do anything unless you have a lot of low expressed genes
+
+```{r}
+library(limma)
+vout <- voom(counts = Y, design = X, plot = TRUE)
+w1 <- vout$weights
+```
+
+
+You can actually insert extra arguments into the voom function. My guess is that they did this to see if iterating between weights and voom fits did anything and they determined it in the negative.
+
+```{r}
+vout <- voom(counts = Y, design = X, plot = TRUE, weights = w1)
+lout <- lmFit(object = Y, design = X, weights = w1)
+```
+
+It makes sense that the trend is completely gone, because each sigma_j is not the actual variance, it's the variance left over after you remove the w_{ij}. It would make more sense to look at using the row averages of the sqrt(1 / weights) times the sigma_j's. I am going to change just that line.
+
+```{r}
+myvoom <-function (counts, design = NULL, lib.size = NULL, normalize.method = "none", span = 0.5, plot = FALSE, save.plot = FALSE, weights, ...) 
+{
+    out <- list()
+    if (is(counts, "DGEList")) {
+        out$genes <- counts$genes
+        out$targets <- counts$samples
+        if (is.null(design) && diff(range(as.numeric(counts$sample$group))) > 
+            0) 
+            design <- model.matrix(~group, data = counts$samples)
+        if (is.null(lib.size)) 
+            lib.size <- with(counts$samples, lib.size * norm.factors)
+        counts <- counts$counts
+    }
+    else {
+        isExpressionSet <- suppressPackageStartupMessages(is(counts, 
+            "ExpressionSet"))
+        if (isExpressionSet) {
+            if (length(Biobase::fData(counts))) 
+                out$genes <- Biobase::fData(counts)
+            if (length(Biobase::pData(counts))) 
+                out$targets <- Biobase::pData(counts)
+            counts <- Biobase::exprs(counts)
+        }
+        else {
+            counts <- as.matrix(counts)
+        }
+    }
+    n <- nrow(counts)
+    if (n < 2L) 
+        stop("Need at least two genes to fit a mean-variance trend")
+    if (is.null(design)) {
+        design <- matrix(1, ncol(counts), 1)
+        rownames(design) <- colnames(counts)
+        colnames(design) <- "GrandMean"
+    }
+    if (is.null(lib.size)) 
+        lib.size <- colSums(counts)
+    y <- t(log2(t(counts + 0.5)/(lib.size + 1) * 1e+06))
+    y <- normalizeBetweenArrays(y, method = normalize.method)
+### Change this to explicitly take weights ----------------------
+    fit <- lmFit(y, design, weights = weights, ...)
+    if (is.null(fit$Amean)) 
+        fit$Amean <- rowMeans(y, na.rm = TRUE)
+    sx <- fit$Amean + mean(log2(lib.size + 1)) - log2(1e+06)
+    
+### Chnage sy to include rowmeans of weights --------------------
+    rmeanw <- sqrt(1 / rowMeans(weights))
+    sy <- sqrt(fit$sigma * rmeanw)
+    allzero <- rowSums(counts) == 0
+    if (any(allzero)) {
+        sx <- sx[!allzero]
+        sy <- sy[!allzero]
+    }
+    l <- lowess(sx, sy, f = span)
+    if (plot) {
+        plot(sx, sy, xlab = "log2( count size + 0.5 )", ylab = "Sqrt( standard deviation )", 
+            pch = 16, cex = 0.25)
+        title("voom: Mean-variance trend")
+        lines(l, col = "red")
+    }
+    f <- approxfun(l, rule = 2)
+    if (fit$rank < ncol(design)) {
+        j <- fit$pivot[1:fit$rank]
+        fitted.values <- fit$coef[, j, drop = FALSE] %*% t(fit$design[, 
+            j, drop = FALSE])
+    }
+    else {
+        fitted.values <- fit$coef %*% t(fit$design)
+    }
+    fitted.cpm <- 2^fitted.values
+    fitted.count <- 1e-06 * t(t(fitted.cpm) * (lib.size + 1))
+    fitted.logcount <- log2(fitted.count)
+    w <- 1/f(fitted.logcount)^4
+    dim(w) <- dim(fitted.logcount)
+    out$E <- y
+    out$weights <- w
+    out$design <- design
+    if (is.null(out$targets)) 
+        out$targets <- data.frame(lib.size = lib.size)
+    else out$targets$lib.size <- lib.size
+    if (save.plot) {
+        out$voom.xy <- list(x = sx, y = sy, xlab = "log2( count size + 0.5 )", 
+            ylab = "Sqrt( standard deviation )")
+        out$voom.line <- l
+    }
+    new("EList", out)
+}
+```
+
+```{r}
+w2 <- w1
+for (index in 1:10) {
+  v2out <- myvoom(counts = Y, design = X, weights = w2, plot = TRUE)
+  w2 <- v2out$weights
+}
+```
+
+
+Plot the differences in the weights
+```{r}
+plot(w1, w2)
+```
+
+No real difference, maybe the library sizes aren't all too different?
+Nope, they are pretty different.
+
+```{r}
+hist(colMeans(Y))
+```
+
+
+What do the rowmeans of the w's look like?
+```{r}
+hist(sqrt(rowMeans(1 / w1)))
+
+loutw <- lmFit(object = Y, design = X, weights = w1)
+loutold <- lmFit(object = Y, design = X)
+
+library(ggplot2)
+qplot(c(loutw$coefficients), c(loutold$coefficients)) +
+  geom_abline(intercept = 1, slope = 1)
+
+qplot(c(loutw$stdev.unscaled), c(loutold$stdev.unscaled)) +
+  geom_abline(intercept = 1, slope = 1)
+
+```
+
+the coefficients look almost the exact same with and without the voom weights.
+
+```{r}
+sessionInfo()
+```
